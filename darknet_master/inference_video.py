@@ -18,6 +18,7 @@ class_name_to_num = {'person':0,'bicycle':1,'car':2,'motorbike':3,'aeroplane':4,
                     'toilet':61,'tvmonitor':62,'laptop':63,'mouse':64,'remote':65,'keyboard':66,'cell phone':67,'microwave':68,'oven':69,'toaster':70,
                     'sink':71,'refrigerator':72,'book':73,'clock':74,'vase':75,'scissors':76,'teddy bear':77,'hair drier':78,'toothbrush':79}
 
+    
 def parser():
     parser = argparse.ArgumentParser(description = "darknet YOLO 영상 객체 탐지")
     parser.add_argument("--input", "-i", type=str, default=0,
@@ -56,6 +57,26 @@ def check_arguments_errors(args):
         raise(ValueError("해당 경로에서 data를 찾지 못했습니다. {}".format(os.path.abspath(args.data_file))))
     if str2int(args.input) == str and not os.path.exists(args.input):
         raise(ValueError("해당 경로에서 video를 찾지 못했습니다. {}".format(os.path.abspath(args.input))))
+    
+frame_queue = Queue()
+darknet_image_queue = Queue(maxsize=1)
+detections_queue = Queue(maxsize=1)
+fps_queue = Queue(maxsize=1)
+
+args = parser()
+check_arguments_errors(args)
+network, class_names, class_colors = darknet.load_network(
+        args.config_file,
+        args.data_file,
+        args.weights,
+        batch_size=1
+    )
+darknet_width = darknet.network_width(network)
+darknet_height = darknet.network_height(network)
+input_path = str2int(args.input)
+cap = cv2.VideoCapture(input_path)
+video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
    
 def set_saved_video(input_video, output_video, size):
     fourcc = cv2.VideoWriter_fourcc(*"MJPG")
@@ -185,26 +206,14 @@ def drawing(frame_queue, detections_queue, fps_queue):
     video.release()
     cv2.destroyAllWindows()               
 
-if __name__ == '__main__':
-    frame_queue = Queue()
-    darknet_image_queue = Queue(maxsize=1)
-    detections_queue = Queue(maxsize=1)
-    fps_queue = Queue(maxsize=1)
-
-    args = parser()
-    check_arguments_errors(args)
-    network, class_names, class_colors = darknet.load_network(
-            args.config_file,
-            args.data_file,
-            args.weights,
-            batch_size=1
-        )
-    darknet_width = darknet.network_width(network)
-    darknet_height = darknet.network_height(network)
-    input_path = str2int(args.input)
-    cap = cv2.VideoCapture(input_path)
-    video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+def main(input, output, label_path):
+    if input is not None:
+        args.input = input
+    if output is not None:
+        args.out_filename = output
+    if label_path is not None:
+        args.labels_path = label_path
+    
     t1 = Thread(target=video_capture, args=(frame_queue, darknet_image_queue))
     t2 = Thread(target=inference, args=(darknet_image_queue, detections_queue, fps_queue))
     t3 = Thread(target=drawing, args=(frame_queue, detections_queue, fps_queue))
@@ -221,4 +230,7 @@ if __name__ == '__main__':
     t3.join()
     
     print("작업 완료")
+
+if __name__ == '__main__':
+    main(None, None, None)
 

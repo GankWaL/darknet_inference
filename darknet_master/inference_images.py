@@ -36,30 +36,9 @@ def parser():
                         help="data 파일 불러오기")
     parser.add_argument("--thresh", "-th", type=float, default=.25,
                         help="특정 수치 밑의 인식된 박스를 지우는 역치 설정")
-    parser.add_argument("--labels_path", "-l", type=str, default="data/autolabeling",
-                        help="각 프레임마다 객체 탐지된 결과 출력 경로")
+    parser.add_argument("--save_labels", "-s", action='store_true',
+                    help="각 이미지의 탐지된 바운딩박스를 yolo 형식으로 저장")
     
-    parser.add_argument("--input", type=str, default="",
-                        help="image source. It can be a single image, a"
-                        "txt with paths to them, or a folder. Image valid"
-                        " formats are jpg, jpeg or png."
-                        "If no input is given, ")
-    parser.add_argument("--batch_size", default=1, type=int,
-                        help="number of images to be processed at the same time")
-    parser.add_argument("--weights", default="yolov4.weights",
-                        help="yolo weights path")
-    parser.add_argument("--dont_show", action='store_true',
-                        help="windown inference display. For headless systems")
-    parser.add_argument("--ext_output", action='store_true',
-                        help="display bbox coordinates of detected objects")
-    parser.add_argument("--save_labels", action='store_true',
-                        help="save detections bbox for each image in yolo format")
-    parser.add_argument("--config_file", default="./cfg/yolov4.cfg",
-                        help="path to config file")
-    parser.add_argument("--data_file", default="./cfg/coco.data",
-                        help="path to data file")
-    parser.add_argument("--thresh", type=float, default=.25,
-                        help="remove detections with lower confidence")
     return parser.parse_args()
 
 

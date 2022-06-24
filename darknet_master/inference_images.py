@@ -7,15 +7,6 @@ import cv2
 import numpy as np
 import darknet
 
-class_name_to_num = {'person':0,'bicycle':1,'car':2,'motorbike':3,'aeroplane':4,'bus':5,'train':6,'truck':7,'boat':8,'traffic light':9,'fire hydrant':10,
-                    'stop sign':11,'parking meter':12,'bench':13,'bird':14,'cat':15,'dog':16,'horse':17,'sheep':18,'cow':19,'elephant':20,
-                    'bear':21,'zebra':22,'giraffe':23,'backpack':24,'umbrella':25,'handbag':26,'tie':27,'suitcase':28,'frisbee':29,'skis':30,
-                    'snowboard':31,'sports ball':32,'kite':33,'baseball bat':34,'baseball glove':35,'skateboard':36,'surfboard':37,'tennis racket':38,'bottle':39,'wine glass':40,
-                    'cup':41,'fork':42,'knife':43,'spoon':44,'bowl':45,'banana':46,'apple':47,'sandwich':48,'orange':49,'broccoli':50,
-                    'carrot':51,'hot dog':52,'pizza':53,'donut':54,'cake':55,'chair':56,'sofa':57,'pottedplant':58,'bed':59,'diningtable':60,
-                    'toilet':61,'tvmonitor':62,'laptop':63,'mouse':64,'remote':65,'keyboard':66,'cell phone':67,'microwave':68,'oven':69,'toaster':70,
-                    'sink':71,'refrigerator':72,'book':73,'clock':74,'vase':75,'scissors':76,'teddy bear':77,'hair drier':78,'toothbrush':79}
-
 def parser():
     parser = argparse.ArgumentParser(description="YOLO 이미지 객체 탐지")
     parser.add_argument("--input", "-i", type=str, default="",
@@ -104,7 +95,48 @@ def prepare_batch(images, network, channels=3):
     return darknet.IMAGE(width, height, channels, darknet_images)
 
 
-def image_detection(image_or_path, network, class_names, class_colors, thresh):
+def get_iou(yolo_bbox1, yolo_bbox2):
+    # input yolo_bbox = (cx, cy, w, h)
+    cx, cy, w, h = yolo_bbox1
+    bbox1 = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]
+    cx, cy, w, h = yolo_bbox2
+    bbox2 = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]
+
+    bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+    bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+
+    # obtain x1, y1, x2, y2 of the intersection
+    x1 = max(bbox1[0], bbox2[0])
+    y1 = max(bbox1[1], bbox2[1])
+    x2 = min(bbox1[2], bbox2[2])
+    y2 = min(bbox1[3], bbox2[3])
+
+    # compute the width and height of the intersection
+    w = x2 - x1
+    h = y2 - y1
+    if w < 0 or h < 0:
+        iou = 0
+    else:
+        inter = w * h
+        iou = inter / (bbox1_area + bbox2_area - inter)
+    return iou
+
+
+def nms(detections, nms_thresh):
+    m = 0
+    while (m < len(detections) - 1):
+        n = m + 1
+        while (n < len(detections)):
+            iou = get_iou(detections[m][2], detections[n][2])
+            if iou > nms_thresh:
+                del detections[n]
+            else:
+                n += 1
+        m += 1
+    return detections
+
+
+def image_detection(image_or_path, network, class_names, class_colors, thresh, nms_thresh=.45):
     # Darknet doesn't accept numpy images.
     # Create one with image we reuse for each detect
     width = darknet.network_width(network)
@@ -122,10 +154,13 @@ def image_detection(image_or_path, network, class_names, class_colors, thresh):
 
     darknet.copy_image_from_bytes(darknet_image, image_resized.tobytes())
     detections = darknet.detect_image(network, class_names, darknet_image, thresh=thresh)
+    print(detections)
+    if nms_thresh:
+        detections = nms(detections, nms_thresh)
+    print(detections)    
     darknet.free_image(darknet_image)
     image = darknet.draw_boxes(detections, image_resized, class_colors)
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB), detections
-
 
 def batch_detection(network, images, class_names, class_colors,
                     thresh=0.25, hier_thresh=.5, nms=.45, batch_size=4):
@@ -178,7 +213,10 @@ def save_annotations(name, image, detections, class_names):
         for label, confidence, bbox in detections:
             x, y, w, h = convert2relative(image, bbox)
             label = class_names.index(label)
-            f.write("{} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(label, x, y, w, h, float(confidence)))
+            label_bbox_list = list("{} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(label, x, y, w, h))
+            for annotations in label_bbox_list:
+                annotations = ' '.join(map(str, annotations))
+                f.write(annotations)
 
 
 def batch_detection_example():
@@ -235,7 +273,7 @@ def main():
         print("FPS: {}".format(fps))
         if not args.dont_show:
             cv2.imshow('Inference', image)
-            if cv2.waitKey() & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         index += 1
 

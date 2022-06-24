@@ -1,0 +1,1 @@
+counters_per_class = 250, 250, 107, 250, 75

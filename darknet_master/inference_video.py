@@ -161,9 +161,9 @@ def createFolder(dir):
         
 def createTxt(frame_num, detections_yoloform, dir):
     with open(dir + "/" + str(frame_num) + '.txt', 'w', encoding='UTF-8') as f:
-        for label in detections_yoloform:
-            label = ' '.join(map(str, label))
-            f.write(label + '\n')
+        for annotations in detections_yoloform:
+            annotations = ' '.join(map(str, annotations))
+            f.write(annotations + '\n')
 
 def createClasses(dir):
     with open(dir + '/classes.txt', 'w', encoding='UTF-8') as f:
@@ -188,7 +188,7 @@ def drawing(frame_queue, detections_queue, fps_queue):
             for label, confidence, bbox in detections:
                 bbox_adjusted = convert2original(frame, bbox)
                 bbox_relatived = convert2relative(bbox) #bbox 좌표 상대값으로 변경
-                label_num = class_name_to_num.get(label) #label class를 번호로 변경
+                label_num = class_names.index(label) #label class를 번호로 변경
                 detections_adjusted.append((str(label), confidence, bbox_adjusted))
                 bbox_num_relatived = list(bbox_relatived)
                 bbox_num_relatived.insert(0, label_num) #label class 번호를 앞으로 삽입

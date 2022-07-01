@@ -29,6 +29,10 @@ def parser():
                         help="특정 수치 밑의 인식된 박스를 지우는 역치 설정")
     parser.add_argument("--save_labels", "-s", action='store_true',
                     help="각 이미지의 탐지된 바운딩박스를 yolo 형식으로 저장")
+    parser.add_argument("--crop_detections", "-cd", action='store_true',
+                    help="탐지된 객체를 bbox 기반으로 crop하여 class별로 저장")
+    parser.add_argument("--crop_path", "-cp", default='crop/detections',
+                    help="crop한 이미지를 저장하는 위치 설정")
     
     return parser.parse_args()
 
@@ -154,13 +158,11 @@ def image_detection(image_or_path, network, class_names, class_colors, thresh, n
 
     darknet.copy_image_from_bytes(darknet_image, image_resized.tobytes())
     detections = darknet.detect_image(network, class_names, darknet_image, thresh=thresh)
-    print(detections)
     if nms_thresh:
-        detections = nms(detections, nms_thresh)
-    print(detections)    
-    darknet.free_image(darknet_image)
-    image = darknet.draw_boxes(detections, image_resized, class_colors)
-    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB), detections
+        detections = nms(detections, nms_thresh)   
+    darknet.free_image(darknet_image)    
+    image_ = darknet.draw_boxes(detections, image_resized, class_colors)
+    return cv2.cvtColor(image_, cv2.COLOR_BGR2RGB), detections
 
 def batch_detection(network, images, class_names, class_colors,
                     thresh=0.25, hier_thresh=.5, nms=.45, batch_size=4):
@@ -213,11 +215,66 @@ def save_annotations(name, image, detections, class_names):
         for label, confidence, bbox in detections:
             x, y, w, h = convert2relative(image, bbox)
             label = class_names.index(label)
-            label_bbox_list = list("{} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(label, x, y, w, h))
+            label_bbox_list = list("{} {:f} {:f} {:f} {:f}\n".format(label, x, y, w, h))
             for annotations in label_bbox_list:
                 annotations = ' '.join(map(str, annotations))
                 f.write(annotations)
 
+
+def createFolder(dir):
+    try:
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+    except OSError:
+        print('Error: 해당 경로에 폴더를 만들 수 없음 ' + dir)
+    return dir
+
+
+def original_image_(image, network):
+    width = darknet.network_width(network)
+    height = darknet.network_height(network)
+    original_image = cv2.imread(image)
+    original_image_resized = cv2.resize(original_image, (width, height),interpolation=cv2.INTER_LINEAR)
+    return original_image_resized
+
+
+def crop_objects(name, image, detections, path, class_names):
+    num_objects = len(detections)
+    #create dictionary to hold count of objects for image name
+    counts = dict()
+    i = 0
+    print(name.split('.')[0].split('\\')[-1])
+    for i in range(num_objects):
+        # get count of class for part of image name
+        class_name = detections[i][0]
+        if class_name in class_names:
+            counts[class_name] = counts.get(class_name, 0) + 1
+            # get box coords
+            x, y, w, h = detections[i][2]
+            xmin = x - w/2
+            ymin = y - h/2
+            xmax = x + w/2
+            ymax = y + h/2
+            if xmin < 0:
+                 xmin = 0
+            if ymin < 0:
+                ymin = 0
+            if xmax > image.shape[1]:
+                xmax = image.shape[1]
+            if ymax > image.shape[0]:
+                ymax = image.shape[0]
+
+            # crop detection from image
+            cropped_image = image[int(ymin):int(ymax), int(xmin):int(xmax)]
+            # construct image name and join it to path for saving crop properly
+            path2class = path + '/' + class_name
+            createFolder(path2class)
+            crop_image_name = class_name + '_' + name.split('.')[0].split('\\')[-1] + '_' + str(counts[class_name]) + '.jpg'
+            crop_image_path = os.path.join(path2class, crop_image_name)
+            # save image
+            cv2.imwrite(crop_image_path, cropped_image)
+        else:
+            continue
 
 def batch_detection_example():
     args = parser()
@@ -268,6 +325,9 @@ def main():
             )
         if args.save_labels:
             save_annotations(image_name, image, detections, class_names)
+        if args.crop_detections:
+            original_image = original_image_(image_name, network)
+            crop_objects(image_name, original_image, detections, args.crop_path, class_names)
         darknet.print_detections(detections, args.ext_output)
         fps = int(1/(time.time() - prev_time))
         print("FPS: {}".format(fps))

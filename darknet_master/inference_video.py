@@ -9,15 +9,6 @@ import sys
 from threading import Thread, enumerate, Event
 from queue import Queue
 
-class_name_to_num = {'person':0,'bicycle':1,'car':2,'motorbike':3,'aeroplane':4,'bus':5,'train':6,'truck':7,'boat':8,'traffic light':9,'fire hydrant':10,
-                    'stop sign':11,'parking meter':12,'bench':13,'bird':14,'cat':15,'dog':16,'horse':17,'sheep':18,'cow':19,'elephant':20,
-                    'bear':21,'zebra':22,'giraffe':23,'backpack':24,'umbrella':25,'handbag':26,'tie':27,'suitcase':28,'frisbee':29,'skis':30,
-                    'snowboard':31,'sports ball':32,'kite':33,'baseball bat':34,'baseball glove':35,'skateboard':36,'surfboard':37,'tennis racket':38,'bottle':39,'wine glass':40,
-                    'cup':41,'fork':42,'knife':43,'spoon':44,'bowl':45,'banana':46,'apple':47,'sandwich':48,'orange':49,'broccoli':50,
-                    'carrot':51,'hot dog':52,'pizza':53,'donut':54,'cake':55,'chair':56,'sofa':57,'pottedplant':58,'bed':59,'diningtable':60,
-                    'toilet':61,'tvmonitor':62,'laptop':63,'mouse':64,'remote':65,'keyboard':66,'cell phone':67,'microwave':68,'oven':69,'toaster':70,
-                    'sink':71,'refrigerator':72,'book':73,'clock':74,'vase':75,'scissors':76,'teddy bear':77,'hair drier':78,'toothbrush':79}
-
     
 def parser():
     parser = argparse.ArgumentParser(description = "darknet YOLO 영상 객체 탐지")
@@ -39,6 +30,10 @@ def parser():
                         help="특정 수치 밑의 인식된 박스를 지우는 역치 설정")
     parser.add_argument("--labels_path", "-l", type=str, default="data/autolabeling",
                         help="각 프레임마다 객체 탐지된 결과 출력 경로")
+    parser.add_argument("--crop_detections", "-cd", action='store_true',
+                    help="탐지된 객체를 bbox 기반으로 crop하여 class별로 저장")
+    parser.add_argument("--crop_path", "-cp", action='./crop/detections',
+                    help="crop한 이미지를 저장하는 위치 설정")
     return parser.parse_args()
 
 def str2int(video_path):
@@ -151,13 +146,12 @@ def inference(darknet_image_queue, detections_queue, fps_queue):
     cap.release()
 
 def createFolder(dir):
-    path2labels = args.labels_path + "/" + dir.split('/')[-1].split('.')[0]
     try:
-        if not os.path.exists(path2labels):
-            os.makedirs(path2labels)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
     except OSError:
-        print('Error: 해당 경로에 폴더를 만들 수 없음 ' + path2labels)
-    return path2labels
+        print('Error: 해당 경로에 폴더를 만들 수 없음 ' + dir)
+    return dir
         
 def createTxt(frame_num, detections_yoloform, dir):
     with open(dir + "/" + str(frame_num) + '.txt', 'w', encoding='UTF-8') as f:
@@ -171,10 +165,57 @@ def createClasses(dir):
             x = name_file.read()
             f.write(x)       
 
+
+def original_image_(image, network):
+    width = darknet.network_width(network)
+    height = darknet.network_height(network)
+    original_image = cv2.imread(image)
+    original_image_resized = cv2.resize(original_image, (width, height),interpolation=cv2.INTER_LINEAR)
+    return original_image_resized
+
+
+def crop_objects(name, image, detections, path, class_names):
+    num_objects = len(detections)
+    #create dictionary to hold count of objects for image name
+    counts = dict()
+    i = 0
+    for i in range(num_objects):
+        # get count of class for part of image name
+        class_name = detections[i][0]
+        if class_name in class_names:
+            counts[class_name] = counts.get(class_name, 0) + 1
+            # get box coords
+            x, y, w, h = detections[i][2]
+            xmin = x - w/2
+            ymin = y - h/2
+            xmax = x + w/2
+            ymax = y + h/2
+            if xmin < 0:
+                 xmin = 0
+            if ymin < 0:
+                ymin = 0
+            if xmax > image.shape[1]:
+                xmax = image.shape[1]
+            if ymax > image.shape[0]:
+                ymax = image.shape[0]
+
+            # crop detection from image
+            cropped_image = image[int(ymin):int(ymax), int(xmin):int(xmax)]
+            # construct image name and join it to path for saving crop properly
+            path2class = path + '/' + class_name
+            createFolder(path2class)
+            crop_image_name = class_name + '_' + name.split('.')[0].split('\\')[-1] + '_' + str(counts[class_name]) + '.jpg'
+            crop_image_path = os.path.join(path2class, crop_image_name)
+            # save image
+            cv2.imwrite(crop_image_path, cropped_image)
+        else:
+            continue
+
+
 def drawing(frame_queue, detections_queue, fps_queue):
     random.seed(3)  # deterministic bbox colors
     video = set_saved_video(cap, args.out_filename, (video_width, video_height))
-    path2labels = createFolder(args.out_filename) #저장할 폴더 생성
+    path2labels = createFolder(args.labels_path + "/" + args.out_filename.split('/')[-1].split('.')[0]) #저장할 폴더 생성
     frame_num = 1 #파일명을 위한 frame 번호 지정
     createClasses(path2labels)
     while cap.isOpened():
@@ -183,7 +224,8 @@ def drawing(frame_queue, detections_queue, fps_queue):
         fps = fps_queue.get()
         detections_adjusted = []
         detections_yoloform = []
-        cv2.imwrite(path2labels +'/' + str(frame_num) + ".jpg", frame) #frame 이미지 저장
+        frame_name = path2labels +'/' + str(frame_num) + ".jpg"
+        cv2.imwrite(frame_name, frame) #frame 이미지 저장
         if frame is not None:
             for label, confidence, bbox in detections:
                 bbox_adjusted = convert2original(frame, bbox)
@@ -199,12 +241,16 @@ def drawing(frame_queue, detections_queue, fps_queue):
                 cv2.imshow('Auto Labeling', image)
             if args.out_filename is not None:
                 video.write(image)
+            if args.crop_detections:
+                original_image = original_image_(frame_name, network)
+                crop_objects(frame_name, original_image, detections, args.crop_path, class_names)
             if cv2.waitKey(fps) == 27:
                 break
             frame_num += 1
     cap.release()
     video.release()
-    cv2.destroyAllWindows()               
+    cv2.destroyAllWindows()
+                   
 
 def main(input, output, label_path):
     if input is not None:

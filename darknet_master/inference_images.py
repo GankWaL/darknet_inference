@@ -243,7 +243,7 @@ def crop_objects(name, image, detections, path, class_names):
     #create dictionary to hold count of objects for image name
     counts = dict()
     i = 0
-    print(name.split('.')[0].split('\\')[-1])
+    # print(name.split('.')[0].split('\\')[-1])
     for i in range(num_objects):
         # get count of class for part of image name
         class_name = detections[i][0]

@@ -14,5 +14,5 @@
 
 - Setup Darknet
 
-    [Windows and Linux](https://techzizou.com/yolo-installation-on-windows-and-linux/)
+    [Windows and Ubuntu](https://techzizou.com/yolo-installation-on-windows-and-linux/)
 

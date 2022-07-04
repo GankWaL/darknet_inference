@@ -1,3 +1,4 @@
-Darknet Python inference
+# Darknet Python inference
 
-Getting started
+## Getting started
+

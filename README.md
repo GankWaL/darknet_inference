@@ -16,7 +16,8 @@
 
     [Windows and Ubuntu](https://techzizou.com/yolo-installation-on-windows-and-linux/)
 
-##Command Lines
+## Command Lines
+
 - Inference image or image folder
 
     `python inference_images.py -i INPUT_IMAGE_OR_PATH -w WEIGHTS_FILE_NAME.weights -c CFG_FILE_NAME.cfg -d DATA_FILE_NAME.data`

@@ -9,3 +9,7 @@
 - install requirements
 
 `pip install -r requirements.txt`
+
+- Setup Darknet
+
+[Windows and Linux](https://techzizou.com/yolo-installation-on-windows-and-linux/)
